@@ -112,15 +112,20 @@ export default function Dashboard({ initialOutages, subscriberCount }: Dashboard
         })
       });
 
-      const data = await response.json();
-
-      if (response.ok) {
-        setFormMessage({ type: "success", text: data.message || "Subscribed successfully!" });
-        setEmail("");
-        setPhoneNumber("");
-        setArea("");
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        const data = await response.json();
+        if (response.ok) {
+          setFormMessage({ type: "success", text: data.message || "Subscribed successfully!" });
+          setEmail("");
+          setPhoneNumber("");
+          setArea("");
+        } else {
+          setFormMessage({ type: "error", text: data.error || "Subscription failed. Please try again." });
+        }
       } else {
-        setFormMessage({ type: "error", text: data.error || "Subscription failed. Please try again." });
+        const errorText = await response.text();
+        setFormMessage({ type: "error", text: errorText || `Failed with status: ${response.status}` });
       }
     } catch (err) {
       console.error(err);
@@ -135,12 +140,22 @@ export default function Dashboard({ initialOutages, subscriberCount }: Dashboard
     setRefreshMessage("Running ingestion and Vision parsing...");
     try {
       const response = await fetch("/api/cron/fetch-outages", { method: "POST" });
-      const data = await response.json();
-      if (response.ok && data.success) {
-        setRefreshMessage(`Successfully ingested ${data.processedCount} new notices!`);
-        window.location.reload();
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        const data = await response.json();
+        if (response.ok && data.success) {
+          setRefreshMessage(`Successfully ingested ${data.processedCount} new notices!`);
+          window.location.reload();
+        } else {
+          setRefreshMessage(data.error || "No new updates found or fetch failed.");
+        }
       } else {
-        setRefreshMessage("No new updates found or fetch failed.");
+        const responseText = await response.text();
+        if (response.status === 401) {
+          setRefreshMessage("Unauthorized: Syncing feed from dashboard is disabled in production.");
+        } else {
+          setRefreshMessage(`Sync failed: ${responseText || `Status ${response.status}`}`);
+        }
       }
     } catch (err) {
       console.error(err);
