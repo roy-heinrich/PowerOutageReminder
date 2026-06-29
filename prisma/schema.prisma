@@ -1,0 +1,38 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum OutageStatus {
+  SCHEDULED
+  FILTERED_OUT
+}
+
+model Outage {
+  id            String       @id @default(uuid())
+  title         String
+  rawText       String       @db.Text
+  imageUrl      String?      // Infographic image URL
+  url           String       @unique
+  outageDate    DateTime?    // The date of the outage
+  timeWindows   Json?        // Split-schedule support: Array of { start: string, end: string }
+  substations   String[]     // Affected substation areas (e.g. ["Nabas Substation"])
+  areasAffected String[]     // List of towns/municipalities/barangays
+  status        OutageStatus @default(SCHEDULED)
+  reminderSent  Boolean      @default(false)
+  processedAt   DateTime     @default(now())
+}
+
+model Subscriber {
+  id             String   @id @default(uuid())
+  email          String?
+  phoneNumber    String?
+  areaOfInterest String   // Barangay/Municipality name
+  createdAt      DateTime @default(now())
+}
