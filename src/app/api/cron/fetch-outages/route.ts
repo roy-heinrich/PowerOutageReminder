@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import Parser from "rss-parser";
 import { prisma } from "@/lib/db";
+import fs from "fs";
+
+function logDebug(message: string) {
+  try {
+    fs.appendFileSync("/run/media/heinz/Disk/PowerOutageReminder/fetch_debug.log", `${new Date().toISOString()} - ${message}\n`);
+  } catch (err) {}
+}
 
 export const runtime = "nodejs";
 
@@ -45,15 +52,21 @@ const mockXml = `<?xml version="1.0" encoding="UTF-8"?>
 </rss>`;
 
 function extractImageUrl(item: any): string | null {
+  let url: string | null = null;
   if (item.enclosure?.url && item.enclosure.type?.startsWith("image/")) {
-    return item.enclosure.url;
+    url = item.enclosure.url;
+  } else {
+    const content = item.content || item.description || "";
+    const imgRegex = /<img[^>]+src=["']([^"']+)["']/i;
+    const match = content.match(imgRegex);
+    if (match && match[1]) {
+      url = match[1];
+    }
   }
 
-  const content = item.content || item.description || "";
-  const imgRegex = /<img[^>]+src=["']([^"']+)["']/i;
-  const match = content.match(imgRegex);
-  if (match && match[1]) {
-    return match[1];
+  if (url) {
+    // Decode HTML entities like &amp; to &
+    return url.replace(/&amp;/g, "&");
   }
 
   return null;
@@ -61,20 +74,22 @@ function extractImageUrl(item: any): string | null {
 
 async function fetchImageAsBase64(url: string) {
   try {
+    logDebug(`Fetching image from URL: ${url}`);
     const res = await fetch(url);
     if (!res.ok) {
-      console.error(`Failed to fetch image: ${res.status} ${res.statusText}`);
+      logDebug(`Failed to fetch image: ${res.status} ${res.statusText}`);
       return null;
     }
     const buffer = await res.arrayBuffer();
     const contentType = res.headers.get("content-type") || "image/jpeg";
     const base64 = Buffer.from(buffer).toString("base64");
+    logDebug(`Successfully converted image. Base64 length: ${base64.length}`);
     return {
       data: base64,
       mimeType: contentType
     };
-  } catch (err) {
-    console.error("Error fetching image for base64 conversion:", err);
+  } catch (err: any) {
+    logDebug(`Error fetching image for base64: ${err.message}`);
     return null;
   }
 }
@@ -244,10 +259,22 @@ function parseOutageDetailsRegex(title: string, rawText: string) {
   };
 }
 
+function extractJson(text: string) {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start !== -1 && end !== -1) {
+    const jsonStr = text.substring(start, end + 1);
+    // Strip out single-line comments in case the model generated them
+    const cleanJsonStr = jsonStr.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+    return JSON.parse(cleanJsonStr);
+  }
+  throw new Error("No JSON object found in response");
+}
+
 async function queryVisionAI(imageBase64: { data: string; mimeType: string }) {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
-    console.error("GROQ_API_KEY is not configured.");
+    logDebug("GROQ_API_KEY is not configured inside queryVisionAI.");
     return null;
   }
 
@@ -257,21 +284,18 @@ Analyze the image and determine if it represents a power outage, scheduled maint
 
 Return a JSON object matching this schema:
 {
-  "isOutage": boolean, // true if it represents a scheduled outage notice
-  "outageDate": "YYYY-MM-DD" or null, // The target date of the outage (use 2026 as the default year if year is omitted or unclear)
-  "timeWindows": [{"start": "HH:MM AM/PM", "end": "HH:MM AM/PM"}], // Array of all time windows, support split-schedule outages
-  "substations": string[], // Affected substation areas, e.g., ["Nabas Substation", "Lezo Substation"]
-  "areasAffected": string[] // List of specific municipalities/barangays affected in Aklan
+  "isOutage": boolean,
+  "outageDate": "YYYY-MM-DD" or null,
+  "timeWindows": [{"start": "HH:MM AM/PM", "end": "HH:MM AM/PM"}],
+  "substations": string[],
+  "areasAffected": string[]
 }
 
-Example format values:
-- Date: "2026-06-28"
-- Time Windows: [{"start": "5:00 AM", "end": "7:00 AM"}, {"start": "4:00 PM", "end": "6:00 PM"}]
-- Substations: ["Nabas Substation", "Lezo Substation"]
-- Areas Affected: ["Altavas", "Kalibo", "Lezo", "Nabas", "Ibajay", "Tangalan", "Makato", "Numancia", "Malinao", "Banga", "Libacao", "Madalag", "Batan", "Balete", "New Washington"]
+Do not include any comments or additional text. Return ONLY a valid JSON object.
 `;
 
   try {
+    logDebug("Calling Groq Vision API...");
     const response = await fetch(
       "https://api.groq.com/openai/v1/chat/completions",
       {
@@ -299,32 +323,40 @@ Example format values:
               ]
             }
           ],
-          response_format: {
-            type: "json_object"
-          },
           temperature: 0.1
         })
       }
     );
 
     if (!response.ok) {
-      console.error("Groq Vision API call failed:", await response.text());
+      const errText = await response.text();
+      logDebug(`Groq Vision API call failed with status ${response.status}: ${errText}`);
       return null;
     }
 
     const data = await response.json();
     const responseText = data.choices?.[0]?.message?.content;
-    if (!responseText) return null;
+    if (!responseText) {
+      logDebug("Groq Vision API returned empty content choices.");
+      return null;
+    }
 
-    return JSON.parse(responseText.trim()) as {
-      isOutage: boolean;
-      outageDate: string | null;
-      timeWindows: { start: string; end: string }[];
-      substations: string[];
-      areasAffected: string[];
-    };
-  } catch (error) {
-    console.error("Error in Groq Vision AI query:", error);
+    logDebug(`Groq Vision API succeeded. Content: ${responseText}`);
+    try {
+      const parsed = extractJson(responseText);
+      return parsed as {
+        isOutage: boolean;
+        outageDate: string | null;
+        timeWindows: { start: string; end: string }[];
+        substations: string[];
+        areasAffected: string[];
+      };
+    } catch (e: any) {
+      logDebug(`Failed to parse extracted JSON: ${e.message}`);
+      return null;
+    }
+  } catch (error: any) {
+    logDebug(`Error in Groq Vision AI query: ${error.message}`);
     return null;
   }
 }
@@ -369,8 +401,10 @@ export async function GET(request: Request) {
 
       const title = item.title || "";
       const rawText = item.content || item.description || "";
+      logDebug(`Processing feed item: ${title} (${item.link})`);
       const cleanText = rawText.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
       const imageUrl = extractImageUrl(item);
+      logDebug(`Extracted imageUrl: ${imageUrl}`);
 
       let isOutage = false;
       let outageDate: Date | null = null;
@@ -380,6 +414,7 @@ export async function GET(request: Request) {
 
       // Developer Simulation flow for local mock testing
       if (item.link === "https://example.com/notices/image-outage") {
+        logDebug("Using mock Developer Simulation flow for image-outage");
         const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
         const tomorrowStr = tomorrow.toISOString().split("T")[0];
@@ -393,12 +428,13 @@ export async function GET(request: Request) {
         substations = ["Nabas Substation", "Kalibo Substation"];
         areasAffected = ["Nabas", "Kalibo", "Ibajay", "Andagao", "Poblacion"];
       } else if (imageUrl && process.env.GROQ_API_KEY) {
-        // Run real Vision AI parsing
-        console.info(`Found image URL: ${imageUrl}. Querying Groq Vision AI...`);
+        logDebug("Image URL and GROQ_API_KEY found, entering Vision AI flow");
         const base64Image = await fetchImageAsBase64(imageUrl);
         if (base64Image) {
+          logDebug("Successfully got base64 image, querying Vision AI");
           const visionResult = await queryVisionAI(base64Image);
           if (visionResult) {
+            logDebug(`Vision AI returned result: isOutage=${visionResult.isOutage}`);
             isOutage = visionResult.isOutage;
             if (visionResult.outageDate) {
               outageDate = new Date(visionResult.outageDate);
@@ -406,12 +442,19 @@ export async function GET(request: Request) {
             timeWindows = visionResult.timeWindows;
             substations = visionResult.substations;
             areasAffected = visionResult.areasAffected;
+          } else {
+            logDebug("Vision AI query returned null");
           }
+        } else {
+          logDebug("Failed to convert image to base64");
         }
+      } else {
+        logDebug(`Skipping Vision AI. imageUrl=${!!imageUrl}, hasGroqKey=${!!process.env.GROQ_API_KEY}`);
       }
 
       // Fallback to text parser if no image was found, or if the Vision AI failed/was unconfigured
       if (!isOutage && timeWindows.length === 0) {
+        logDebug("Entering text parser fallback");
         isOutage = classifyWithKeywords(title, cleanText);
         const textResult = parseOutageDetailsRegex(title, cleanText);
         outageDate = textResult.outageDate;
@@ -419,6 +462,8 @@ export async function GET(request: Request) {
         substations = textResult.substations;
         areasAffected = textResult.areasAffected;
       }
+
+      logDebug(`Outage details to save: isOutage=${isOutage}, Date=${outageDate ? outageDate.toISOString() : 'None'}, TimeWindows=${JSON.stringify(timeWindows)}, Substations=${substations.join(',')}, Areas=${areasAffected.join(',')}`);
 
       const status = isOutage ? "SCHEDULED" : "FILTERED_OUT";
 

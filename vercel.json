@@ -2,11 +2,11 @@
   "crons": [
     {
       "path": "/api/cron/fetch-outages",
-      "schedule": "0 * * * *"
+      "schedule": "0 11,23 * * *"
     },
     {
       "path": "/api/cron/send-reminders",
-      "schedule": "30 * * * *"
+      "schedule": "30 11,23 * * *"
     }
   ]
 }
