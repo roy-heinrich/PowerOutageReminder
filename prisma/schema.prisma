@@ -28,11 +28,3 @@ model Outage {
   reminderSent  Boolean      @default(false)
   processedAt   DateTime     @default(now())
 }
-
-model Subscriber {
-  id             String   @id @default(uuid())
-  email          String?
-  phoneNumber    String?
-  areaOfInterest String   // Barangay/Municipality name
-  createdAt      DateTime @default(now())
-}

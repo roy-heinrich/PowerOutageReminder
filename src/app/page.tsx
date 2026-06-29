@@ -5,7 +5,6 @@ export const dynamic = "force-dynamic";
 
 export default async function Home() {
   let outages: any[] = [];
-  let subscriberCount = 0;
 
   try {
     outages = await prisma.outage.findMany({
@@ -17,8 +16,6 @@ export default async function Home() {
       outageDate: o.outageDate ? o.outageDate.toISOString() : null,
       processedAt: o.processedAt.toISOString()
     }));
-
-    subscriberCount = await prisma.subscriber.count();
   } catch (err) {
     console.warn("Failed to query Neon Postgres, loading fallback preview data. Error details:", err);
 
@@ -71,8 +68,7 @@ export default async function Home() {
         processedAt: new Date().toISOString()
       }
     ];
-    subscriberCount = 4;
   }
 
-  return <Dashboard initialOutages={outages} subscriberCount={subscriberCount} />;
+  return <Dashboard initialOutages={outages} />;
 }
