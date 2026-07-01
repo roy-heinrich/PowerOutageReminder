@@ -86,7 +86,7 @@ export default function Dashboard({ initialOutages }: DashboardProps) {
       if (contentType && contentType.includes("application/json")) {
         const data = await response.json();
         if (response.ok && data.success) {
-          setTestResult({ type: "success", text: "Test message sent! Check your Telegram." });
+          setTestResult({ type: "success", text: "Test message sent! Check the Telegram channel." });
         } else {
           setTestResult({ type: "error", text: data.error || "Failed to send test message." });
         }
@@ -216,7 +216,7 @@ export default function Dashboard({ initialOutages }: DashboardProps) {
           <Card className="bg-zinc-900 border border-zinc-800 rounded">
             <CardContent className="p-5 flex items-center justify-between">
               <div>
-                <p className="text-xs font-medium text-zinc-400">Telegram Alerts</p>
+                <p className="text-xs font-medium text-zinc-400">Channel Alerts</p>
                 <h3 className="text-2xl font-bold text-emerald-400 mt-1">Connected</h3>
               </div>
               <div className="bg-zinc-800/50 p-2.5 rounded border border-zinc-700 text-zinc-300">
@@ -247,10 +247,10 @@ export default function Dashboard({ initialOutages }: DashboardProps) {
               <CardHeader>
                 <CardTitle className="text-base font-bold text-zinc-100 flex items-center gap-2">
                   <Send className="h-4 w-4 text-zinc-300" />
-                  Telegram Notifications
+                  Telegram Channel
                 </CardTitle>
                 <CardDescription className="text-zinc-400 text-xs">
-                  Power outage alerts are sent to your Telegram 24 hours before a scheduled interruption.
+                  Power outage alerts are sent to the Telegram channel 24 hours before a scheduled interruption.
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
@@ -286,7 +286,7 @@ export default function Dashboard({ initialOutages }: DashboardProps) {
                       <div className="bg-zinc-800 rounded p-1 mt-0.5 border border-zinc-700 shrink-0">
                         <Send className="h-3 w-3 text-zinc-300" />
                       </div>
-                      <span>Formatted alert is sent to your Telegram with all details</span>
+                      <span>Formatted alert is sent to the Telegram channel with all details</span>
                     </div>
                   </div>
                 </div>
@@ -325,7 +325,7 @@ export default function Dashboard({ initialOutages }: DashboardProps) {
               <ol className="list-decimal pl-4 space-y-2">
                 <li>System automatically parses RSS updates. If image infographics are found, they are processed using **Gemini Vision AI**.</li>
                 <li>Vision AI OCR extracts dates, substations, split-schedules, and municipalities.</li>
-                <li>Telegram bot sends alerts 24 hours prior with full outage details.</li>
+                <li>Telegram bot sends alerts to the channel 24 hours prior with full outage details.</li>
               </ol>
             </Card>
           </section>

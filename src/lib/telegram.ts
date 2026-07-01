@@ -17,10 +17,10 @@ interface TelegramSendResult {
  */
 export async function sendTelegramMessage(text: string): Promise<TelegramSendResult> {
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
+  const chatId = process.env.TELEGRAM_CHANNEL_ID || process.env.TELEGRAM_CHAT_ID;
 
   if (!botToken || !chatId) {
-    console.warn("[Telegram] TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is not configured. Skipping notification.");
+    console.warn("[Telegram] TELEGRAM_BOT_TOKEN or TELEGRAM_CHANNEL_ID/TELEGRAM_CHAT_ID is not configured. Skipping notification.");
     return { ok: false, description: "Telegram credentials not configured" };
   }
 
